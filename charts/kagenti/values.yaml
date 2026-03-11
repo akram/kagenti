@@ -1,5 +1,8 @@
 # Global settings
 openshift: true
+# OpenShift apps domain for path-based UI route host (e.g. apps.rosa.akram.dxp0.p3.openshiftapps.com).
+# UI route host is computed as: kagenti-ui-<ui.namespace>.<openshiftAppsDomain>
+openshiftAppsDomain: ""
 
 # ------------------------------------------------------------------
 #  Control Panel: Enable or disable components here

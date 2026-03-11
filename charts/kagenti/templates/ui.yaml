@@ -383,6 +383,31 @@ subjects:
     namespace: "{{ .Values.ui.namespace }}"
 ---
 {{- if .Values.openshift }}
+{{- $appsDomain := .Values.openshiftAppsDomain | trim }}
+{{- $uiRouteHost := printf "kagenti-ui-%s.%s" .Values.ui.namespace $appsDomain }}
+{{- if $appsDomain }}
+# Path-based routing: same host for /api (backend) and / (UI). Host computed from openshiftAppsDomain.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: kagenti-ui-api
+  namespace: "{{ .Values.ui.namespace }}"
+  labels:
+    {{- include "kagenti.labels" . | nindent 4 }}
+spec:
+  host: {{ $uiRouteHost | quote }}
+  path: /api
+  port:
+    targetPort: http
+  to:
+    kind: Service
+    name: kagenti-backend
+  wildcardPolicy: None
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+{{- end }}
 # OpenShift Route for UI
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -394,6 +419,9 @@ metadata:
   annotations:
     openshift.io/host.generated: "true"
 spec:
+  {{- if $appsDomain }}
+  host: {{ $uiRouteHost | quote }}
+  {{- end }}
   path: /
   port:
     targetPort: http
