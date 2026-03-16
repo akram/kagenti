@@ -61,6 +61,7 @@ from app.models.shipwright import (
     BuildSourceConfig,
     BuildOutputConfig,
     ResourceConfigFromBuild,
+    BuildListResponse,
 )
 from app.services.kubernetes import KubernetesService, get_kubernetes_service
 from app.services.shipwright import (
@@ -72,7 +73,9 @@ from app.services.shipwright import (
     is_build_succeeded,
     get_output_image_from_buildrun,
     resolve_clone_secret,
+    list_builds_with_runs,
 )
+from app.utils.exceptions import raise_http_from_api_exception
 from app.utils.routes import create_route_for_agent_or_tool, route_exists
 
 
@@ -585,12 +588,28 @@ async def list_tools(
         return ToolListResponse(items=tools)
 
     except ApiException as e:
-        if e.status == 403:
-            raise HTTPException(
-                status_code=403,
-                detail="Permission denied. Check RBAC configuration.",
-            )
-        raise HTTPException(status_code=e.status, detail=str(e.reason))
+        raise_http_from_api_exception(e)
+
+
+@router.get(
+    "/builds",
+    response_model=BuildListResponse,
+    dependencies=[Depends(require_roles(ROLE_VIEWER))],
+)
+async def list_tool_builds(
+    namespace: str = Query(default="default", description="Kubernetes namespace"),
+    kube: KubernetesService = Depends(get_kubernetes_service),
+) -> BuildListResponse:
+    """
+    List all tool Shipwright Builds in the specified namespace with their BuildRuns.
+
+    Returns Builds with label kagenti.io/type=tool, each with build metadata and
+    the list of BuildRuns (for visibility of in-progress and failed builds).
+    """
+    try:
+        return list_builds_with_runs(kube, namespace, RESOURCE_TYPE_TOOL)
+    except ApiException as e:
+        raise_http_from_api_exception(e)
 
 
 @router.get("/{namespace}/{name}", dependencies=[Depends(require_roles(ROLE_VIEWER))])

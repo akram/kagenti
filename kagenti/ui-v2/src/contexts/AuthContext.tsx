@@ -101,9 +101,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const initAuth = async () => {
       try {
         // Fetch auth config from backend
-        const response = await fetch(`${API_BASE_URL}/auth/config`);
+        const configUrl = `${API_BASE_URL}/auth/config`;
+        const response = await fetch(configUrl);
         if (!response.ok) {
-          throw new Error('Failed to fetch auth config');
+          const statusText = response.statusText || 'Unknown';
+          throw new Error(
+            `Failed to fetch auth config (${response.status} ${statusText}). ` +
+              'Check that the backend is running and reachable.'
+          );
         }
 
         const config: AuthConfigResponse = await response.json();
@@ -254,10 +259,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           error_description: (error as any).error_description,
           fullError: error,
         });
-        
+
         // Create user-friendly error message
         let userErrorMsg = `Authentication failed: ${errorMsg}`;
-        if ((error as any).error === 'invalid_grant') {
+        if (errorMsg.includes('Failed to fetch') || errorMsg === 'NetworkError when attempting to fetch resource') {
+          userErrorMsg =
+            'Cannot reach the backend. Check that the API is running and the URL is correct (browser console F12 has more details).';
+        } else if ((error as any).error === 'invalid_grant') {
           userErrorMsg = 'Authentication failed: Invalid authorization code. Please try again.';
         } else if ((error as any).error === 'unauthorized_client') {
           userErrorMsg = 'Authentication failed: Client not authorized. Check Keycloak configuration.';

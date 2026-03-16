@@ -285,6 +285,46 @@ export interface ShipwrightBuildInfo {
   agentConfig?: AgentConfigFromBuild;
 }
 
+/** Summary of a single BuildRun for list/build-history APIs */
+export interface AgentBuildRunSummary {
+  name: string;
+  phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed';
+  startTime?: string;
+  completionTime?: string;
+  failureMessage?: string;
+}
+
+/** Summary of an agent Build with its BuildRuns for catalog list */
+export interface AgentBuildSummary {
+  buildName: string;
+  namespace: string;
+  buildRegistered: boolean;
+  gitUrl: string;
+  gitRevision: string;
+  agentName?: string;
+  buildRuns: AgentBuildRunSummary[];
+}
+
+/** Summary of a single BuildRun for tool list/build-history APIs */
+export interface ToolBuildRunSummary {
+  name: string;
+  phase: 'Pending' | 'Running' | 'Succeeded' | 'Failed';
+  startTime?: string;
+  completionTime?: string;
+  failureMessage?: string;
+}
+
+/** Summary of a tool Build with its BuildRuns for catalog list */
+export interface ToolBuildSummary {
+  buildName: string;
+  namespace: string;
+  buildRegistered: boolean;
+  gitUrl: string;
+  gitRevision: string;
+  toolName?: string;
+  buildRuns: ToolBuildRunSummary[];
+}
+
 /**
  * Shipwright build service
  */
@@ -297,6 +337,26 @@ export const shipwrightService = {
       '/agents/build-strategies'
     );
     return response.strategies;
+  },
+
+  /**
+   * List all agent Shipwright Builds in a namespace with their BuildRuns
+   */
+  async listAgentBuilds(namespace: string): Promise<AgentBuildSummary[]> {
+    const response = await apiFetch<{ items: AgentBuildSummary[] }>(
+      `/agents/builds?namespace=${encodeURIComponent(namespace)}`
+    );
+    return response.items;
+  },
+
+  /**
+   * List all tool Shipwright Builds in a namespace with their BuildRuns
+   */
+  async listToolBuilds(namespace: string): Promise<ToolBuildSummary[]> {
+    const response = await apiFetch<{ items: ToolBuildSummary[] }>(
+      `/tools/builds?namespace=${encodeURIComponent(namespace)}`
+    );
+    return response.items;
   },
 
   /**

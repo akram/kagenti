@@ -4,11 +4,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  PageSection,
-  Title,
-  Toolbar,
-  ToolbarContent,
-  ToolbarItem,
   Button,
   Spinner,
   EmptyState,
@@ -19,37 +14,26 @@ import {
   EmptyStateActions,
   Label,
   LabelGroup,
-  Modal,
-  ModalVariant,
-  TextInput,
-  Text,
-  TextContent,
-  Icon,
   Dropdown,
   DropdownList,
   DropdownItem,
   MenuToggle,
   MenuToggleElement,
+  Icon,
 } from '@patternfly/react-core';
-import {
-  Table,
-  Thead,
-  Tr,
-  Th,
-  Tbody,
-  Td,
-} from '@patternfly/react-table';
-import {
-  CubesIcon,
-  PlusCircleIcon,
-  EllipsisVIcon,
-  ExclamationTriangleIcon,
-} from '@patternfly/react-icons';
+import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
+import { CubesIcon, PlusCircleIcon, EllipsisVIcon, ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Agent } from '@/types';
 import { agentService } from '@/services/api';
-import { NamespaceSelector } from '@/components/NamespaceSelector';
+import {
+  CatalogPageLayout,
+  CatalogSection,
+  StatusBadge,
+  WorkloadTypeLabel,
+  DeleteConfirmModal,
+} from '@/components';
 
 export const AgentCatalogPage: React.FC = () => {
   const navigate = useNavigate();
@@ -75,12 +59,10 @@ export const AgentCatalogPage: React.FC = () => {
     mutationFn: ({ namespace: ns, name }: { namespace: string; name: string }) =>
       agentService.delete(ns, name),
     onSuccess: (_data, variables) => {
-      // Optimistically remove the deleted agent from the cache
       queryClient.setQueryData<Agent[]>(
         ['agents', variables.namespace],
         (old) => old?.filter((a) => a.name !== variables.name) ?? []
       );
-      // Also invalidate to ensure fresh data from server
       queryClient.invalidateQueries({ queryKey: ['agents', variables.namespace] });
       handleCloseDeleteModal();
     },
@@ -109,30 +91,6 @@ export const AgentCatalogPage: React.FC = () => {
 
   const columns = ['Name', 'Description', 'Status', 'Labels', 'Workload', ''];
 
-  const renderWorkloadType = (workloadType: string | undefined) => {
-    const type = workloadType || 'deployment';
-    const label = type.charAt(0).toUpperCase() + type.slice(1);
-    let color: 'grey' | 'orange' | 'gold' = 'grey';
-    if (type === 'job') {
-      color = 'orange';
-    } else if (type === 'statefulset') {
-      color = 'gold';
-    }
-    return <Label color={color} isCompact>{label}</Label>;
-  };
-
-  const renderStatusBadge = (status: string) => {
-    let color: 'green' | 'red' | 'blue' | 'cyan' = 'red';
-    if (status === 'Ready' || status === 'Completed' || status === 'Running') {
-      color = 'green';
-    } else if (status === 'Progressing') {
-      color = 'blue';
-    } else if (status === 'Pending') {
-      color = 'cyan';
-    }
-    return <Label color={color}>{status}</Label>;
-  };
-
   const renderLabels = (agent: Agent) => {
     const labels = [];
     if (agent.labels.protocol) {
@@ -158,200 +116,157 @@ export const AgentCatalogPage: React.FC = () => {
 
   return (
     <>
-      <PageSection variant="light">
-        <Title headingLevel="h1">Agent Catalog</Title>
-      </PageSection>
-
-      <PageSection variant="light" padding={{ default: 'noPadding' }}>
-        <Toolbar>
-          <ToolbarContent>
-            <ToolbarItem>
-              <NamespaceSelector
-                namespace={namespace}
-                onNamespaceChange={setNamespace}
+      <CatalogPageLayout
+        title="Agent Catalog"
+        namespace={namespace}
+        onNamespaceChange={setNamespace}
+        primaryButtonLabel="Import Agent"
+        primaryButtonIcon={<PlusCircleIcon />}
+        onPrimaryAction={() => navigate('/agents/import')}
+      >
+        <CatalogSection
+          title="Built agents"
+          description="Agents that have a workload from a successful build (Deployment, StatefulSet, or Job)."
+        >
+          {isLoading ? (
+            <div className="kagenti-loading-center">
+              <Spinner size="lg" aria-label="Loading agents" />
+            </div>
+          ) : isError ? (
+            <EmptyState>
+              <EmptyStateHeader
+                titleText="Error loading agents"
+                icon={<EmptyStateIcon icon={CubesIcon} />}
+                headingLevel="h4"
               />
-            </ToolbarItem>
-            <ToolbarItem>
-              <Button
-                variant="primary"
-                icon={<PlusCircleIcon />}
-                onClick={() => navigate('/agents/import')}
-              >
-                Import Agent
-              </Button>
-            </ToolbarItem>
-          </ToolbarContent>
-        </Toolbar>
-      </PageSection>
+              <EmptyStateBody>
+                {error instanceof Error
+                  ? error.message
+                  : 'Unable to fetch agents from the cluster.'}
+              </EmptyStateBody>
+            </EmptyState>
+          ) : agents.length === 0 ? (
+            <EmptyState>
+              <EmptyStateHeader
+                titleText="No built agents"
+                icon={<EmptyStateIcon icon={CubesIcon} />}
+                headingLevel="h4"
+              />
+              <EmptyStateBody>
+                No built agents in namespace &quot;{namespace}&quot;. Import an agent from source to build and deploy.
+              </EmptyStateBody>
+              <EmptyStateFooter>
+                <EmptyStateActions>
+                  <Button variant="primary" onClick={() => navigate('/agents/import')}>
+                    Import Agent
+                  </Button>
+                </EmptyStateActions>
+              </EmptyStateFooter>
+            </EmptyState>
+          ) : (
+            <Table aria-label="Built agents table" variant="compact">
+              <Thead>
+                <Tr>
+                  {columns.map((col, idx) => (
+                    <Th key={col || `col-${idx}`}>{col}</Th>
+                  ))}
+                </Tr>
+              </Thead>
+              <Tbody>
+                {agents.map((agent) => {
+                  const menuId = getMenuId(agent);
+                  return (
+                    <Tr key={menuId}>
+                      <Td dataLabel="Name">
+                        <Button
+                          variant="link"
+                          isInline
+                          onClick={() =>
+                            navigate(`/agents/${agent.namespace}/${agent.name}`)
+                          }
+                        >
+                          {agent.name}
+                        </Button>
+                      </Td>
+                      <Td dataLabel="Description">
+                        {agent.description || 'No description'}
+                      </Td>
+                      <Td dataLabel="Status">
+                        <StatusBadge status={agent.status} />
+                      </Td>
+                      <Td dataLabel="Labels">{renderLabels(agent)}</Td>
+                      <Td dataLabel="Workload">
+                        <WorkloadTypeLabel workloadType={agent.workloadType} />
+                      </Td>
+                      <Td isActionCell>
+                        <Dropdown
+                          isOpen={openMenuId === menuId}
+                          onSelect={() => setOpenMenuId(null)}
+                          onOpenChange={(isOpen) => setOpenMenuId(isOpen ? menuId : null)}
+                          toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                            <MenuToggle
+                              ref={toggleRef}
+                              aria-label="Actions menu"
+                              variant="plain"
+                              onClick={() =>
+                                setOpenMenuId(openMenuId === menuId ? null : menuId)
+                              }
+                              isExpanded={openMenuId === menuId}
+                            >
+                              <EllipsisVIcon />
+                            </MenuToggle>
+                          )}
+                          popperProps={{ position: 'right' }}
+                        >
+                          <DropdownList>
+                            <DropdownItem
+                              key="view"
+                              onClick={() =>
+                                navigate(`/agents/${agent.namespace}/${agent.name}`)
+                              }
+                            >
+                              View details
+                            </DropdownItem>
+                            <DropdownItem
+                              key="delete"
+                              onClick={() => handleDeleteClick(agent)}
+                              isDanger
+                            >
+                              Delete agent
+                            </DropdownItem>
+                          </DropdownList>
+                        </Dropdown>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          )}
+        </CatalogSection>
+      </CatalogPageLayout>
 
-      <PageSection>
-        {isLoading ? (
-          <div className="kagenti-loading-center">
-            <Spinner size="lg" aria-label="Loading agents" />
-          </div>
-        ) : isError ? (
-          <EmptyState>
-            <EmptyStateHeader
-              titleText="Error loading agents"
-              icon={<EmptyStateIcon icon={CubesIcon} />}
-              headingLevel="h4"
-            />
-            <EmptyStateBody>
-              {error instanceof Error
-                ? error.message
-                : 'Unable to fetch agents from the cluster.'}
-            </EmptyStateBody>
-          </EmptyState>
-        ) : agents.length === 0 ? (
-          <EmptyState>
-            <EmptyStateHeader
-              titleText="No agents found"
-              icon={<EmptyStateIcon icon={CubesIcon} />}
-              headingLevel="h4"
-            />
-            <EmptyStateBody>
-              No agents found in namespace "{namespace}".
-            </EmptyStateBody>
-            <EmptyStateFooter>
-              <EmptyStateActions>
-                <Button
-                  variant="primary"
-                  onClick={() => navigate('/agents/import')}
-                >
-                  Import Agent
-                </Button>
-              </EmptyStateActions>
-            </EmptyStateFooter>
-          </EmptyState>
-        ) : (
-          <Table aria-label="Agents table" variant="compact">
-            <Thead>
-              <Tr>
-                {columns.map((col, idx) => (
-                  <Th key={col || `col-${idx}`}>{col}</Th>
-                ))}
-              </Tr>
-            </Thead>
-            <Tbody>
-              {agents.map((agent) => {
-                const menuId = getMenuId(agent);
-                return (
-                  <Tr key={menuId}>
-                    <Td dataLabel="Name">
-                      <Button
-                        variant="link"
-                        isInline
-                        onClick={() =>
-                          navigate(`/agents/${agent.namespace}/${agent.name}`)
-                        }
-                      >
-                        {agent.name}
-                      </Button>
-                    </Td>
-                    <Td dataLabel="Description">
-                      {agent.description || 'No description'}
-                    </Td>
-                    <Td dataLabel="Status">{renderStatusBadge(agent.status)}</Td>
-                    <Td dataLabel="Labels">{renderLabels(agent)}</Td>
-                    <Td dataLabel="Workload">{renderWorkloadType(agent.workloadType)}</Td>
-                    <Td isActionCell>
-                      <Dropdown
-                        isOpen={openMenuId === menuId}
-                        onSelect={() => setOpenMenuId(null)}
-                        onOpenChange={(isOpen) => setOpenMenuId(isOpen ? menuId : null)}
-                        toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
-                          <MenuToggle
-                            ref={toggleRef}
-                            aria-label="Actions menu"
-                            variant="plain"
-                            onClick={() =>
-                              setOpenMenuId(openMenuId === menuId ? null : menuId)
-                            }
-                            isExpanded={openMenuId === menuId}
-                          >
-                            <EllipsisVIcon />
-                          </MenuToggle>
-                        )}
-                        popperProps={{ position: 'right' }}
-                      >
-                        <DropdownList>
-                          <DropdownItem
-                            key="view"
-                            onClick={() =>
-                              navigate(`/agents/${agent.namespace}/${agent.name}`)
-                            }
-                          >
-                            View details
-                          </DropdownItem>
-                          <DropdownItem
-                            key="delete"
-                            onClick={() => handleDeleteClick(agent)}
-                            isDanger
-                          >
-                            Delete agent
-                          </DropdownItem>
-                        </DropdownList>
-                      </Dropdown>
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-        )}
-      </PageSection>
-
-      {/* Delete Warning Modal */}
-      <Modal
-        variant={ModalVariant.small}
-        titleIconVariant="warning"
-        title="Delete agent?"
+      <DeleteConfirmModal
         isOpen={deleteModalOpen}
         onClose={handleCloseDeleteModal}
-        actions={[
-          <Button
-            key="delete"
-            variant="danger"
-            onClick={handleDeleteConfirm}
-            isLoading={deleteMutation.isPending}
-            isDisabled={
-              deleteMutation.isPending ||
-              deleteConfirmText !== agentToDelete?.name
-            }
-          >
-            Delete
-          </Button>,
-          <Button
-            key="cancel"
-            variant="link"
-            onClick={handleCloseDeleteModal}
-            isDisabled={deleteMutation.isPending}
-          >
-            Cancel
-          </Button>,
-        ]}
-      >
-        <TextContent>
-          <Text>
+        onConfirm={handleDeleteConfirm}
+        isPending={deleteMutation.isPending}
+        title="Delete agent?"
+        bodyMessage={
+          <>
             <Icon status="warning" style={{ marginRight: '8px' }}>
               <ExclamationTriangleIcon />
             </Icon>
             The agent <strong>{agentToDelete?.name}</strong> will be permanently
             deleted. This will also delete the associated Deployment, Service,
             and any Shipwright builds if they exist.
-          </Text>
-          <Text component="small" style={{ marginTop: '16px', display: 'block' }}>
-            Type <strong>{agentToDelete?.name}</strong> to confirm deletion:
-          </Text>
-        </TextContent>
-        <TextInput
-          id="delete-confirm-input"
-          value={deleteConfirmText}
-          onChange={(_e, value) => setDeleteConfirmText(value)}
-          aria-label="Confirm agent name"
-          style={{ marginTop: '8px' }}
-        />
-      </Modal>
+          </>
+        }
+        confirmName={agentToDelete?.name ?? ''}
+        confirmValue={deleteConfirmText}
+        onConfirmValueChange={setDeleteConfirmText}
+        confirmInputAriaLabel="Confirm agent name"
+      />
     </>
   );
 };

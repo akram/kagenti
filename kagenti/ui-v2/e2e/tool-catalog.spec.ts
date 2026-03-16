@@ -42,8 +42,9 @@ test.describe('Tool Catalog - With Deployed Tools @extended', () => {
   });
 
   test('should display tools table when tools are deployed', async ({ page }) => {
+    // Wait for either the table or the empty state message (built tools section)
     const table = page.getByRole('table');
-    const emptyState = page.getByText(/No tools found/i);
+    const emptyState = page.getByText(/No built tools/i);
     await expect(table.or(emptyState)).toBeVisible({ timeout: 30000 });
   });
 
@@ -100,18 +101,44 @@ test.describe('Tool Catalog - API Integration @extended', () => {
   });
 
   test('should handle empty tool list', async ({ page }) => {
+    // Mock empty responses for both tools and builds lists
     await page.route('**/api/v1/tools**', (route) => {
-      route.fulfill({
-        status: 200,
-        body: JSON.stringify({ items: [] }),
-        contentType: 'application/json',
-      });
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/builds')) {
+        route.fulfill({
+          status: 200,
+          body: JSON.stringify({ items: [] }),
+          contentType: 'application/json',
+        });
+      } else {
+        route.fulfill({
+          status: 200,
+          body: JSON.stringify({ items: [] }),
+          contentType: 'application/json',
+        });
+      }
     });
 
     await page.goto('/tools');
 
-    await expect(page.getByText(/No tools found/i)).toBeVisible({
+    // Verify empty state for built tools is shown
+    await expect(page.getByText(/No built tools/i)).toBeVisible({
       timeout: 10000,
     });
+  });
+
+  test('should display Tool builds section', async ({ page }) => {
+    await page.goto('/tools');
+    await page.waitForLoadState('networkidle');
+
+    // Verify "Tool builds" section heading is present
+    await expect(page.getByRole('heading', { name: /Tool builds/i })).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Section shows either empty state or build cards
+    const noBuilds = page.getByText(/No tool builds found/);
+    const expandSection = page.getByText(/Show BuildRuns/i);
+    await expect(noBuilds.or(expandSection)).toBeVisible({ timeout: 10000 });
   });
 });

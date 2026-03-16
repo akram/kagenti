@@ -3,9 +3,11 @@
 
 export { HomePage } from './HomePage';
 export { AgentCatalogPage } from './AgentCatalogPage';
+export { AgentBuildsPage } from './AgentBuildsPage';
 export { AgentDetailPage } from './AgentDetailPage';
 export { BuildProgressPage } from './BuildProgressPage';
 export { ToolCatalogPage } from './ToolCatalogPage';
+export { ToolBuildsPage } from './ToolBuildsPage';
 export { ToolDetailPage } from './ToolDetailPage';
 export { ToolBuildProgressPage } from './ToolBuildProgressPage';
 export { ObservabilityPage } from './ObservabilityPage';

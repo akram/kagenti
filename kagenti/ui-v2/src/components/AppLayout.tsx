@@ -17,6 +17,7 @@ import {
   NavList,
   NavItem,
   NavGroup,
+  NavExpandable,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
@@ -320,20 +321,48 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <>
               <NavGroup title="Agentic Workloads">
                 <NavList>
-                  <NavItem
-                    itemId="agents"
+                  <NavExpandable
+                    title="Agents"
+                    groupId="agents"
+                    isExpanded={location.pathname.startsWith('/agents')}
                     isActive={isNavItemActive('/agents')}
-                    onClick={() => handleNavSelect('/agents')}
                   >
-                    Agents
-                  </NavItem>
-                  <NavItem
-                    itemId="tools"
+                    <NavItem
+                      itemId="agents-catalog"
+                      isActive={location.pathname === '/agents/catalog' || location.pathname === '/agents'}
+                      onClick={() => handleNavSelect('/agents/catalog')}
+                    >
+                      Catalog
+                    </NavItem>
+                    <NavItem
+                      itemId="agents-builds"
+                      isActive={location.pathname === '/agents/builds'}
+                      onClick={() => handleNavSelect('/agents/builds')}
+                    >
+                      Builds
+                    </NavItem>
+                  </NavExpandable>
+                  <NavExpandable
+                    title="Tools"
+                    groupId="tools"
+                    isExpanded={location.pathname.startsWith('/tools')}
                     isActive={isNavItemActive('/tools')}
-                    onClick={() => handleNavSelect('/tools')}
                   >
-                    Tools
-                  </NavItem>
+                    <NavItem
+                      itemId="tools-catalog"
+                      isActive={location.pathname === '/tools/catalog' || location.pathname === '/tools'}
+                      onClick={() => handleNavSelect('/tools/catalog')}
+                    >
+                      Catalog
+                    </NavItem>
+                    <NavItem
+                      itemId="tools-builds"
+                      isActive={location.pathname === '/tools/builds'}
+                      onClick={() => handleNavSelect('/tools/builds')}
+                    >
+                      Builds
+                    </NavItem>
+                  </NavExpandable>
                 </NavList>
               </NavGroup>
 

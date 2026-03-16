@@ -70,6 +70,7 @@ from app.models.responses import (
     DeleteResponse,
 )
 from app.services.kubernetes import KubernetesService, get_kubernetes_service
+from app.utils.exceptions import raise_http_from_api_exception
 from app.utils.routes import create_route_for_agent_or_tool, route_exists
 from app.models.shipwright import (
     ResourceType,
@@ -83,6 +84,7 @@ from app.models.shipwright import (
     ShipwrightBuildRunStatusResponse,
     ResourceConfigFromBuild,
     ShipwrightBuildInfoResponse,
+    BuildListResponse,
 )
 from app.services.shipwright import (
     build_shipwright_build_manifest,
@@ -94,6 +96,7 @@ from app.services.shipwright import (
     is_build_succeeded,
     get_output_image_from_buildrun,
     resolve_clone_secret,
+    list_builds_with_runs,
 )
 
 
@@ -641,12 +644,28 @@ async def list_agents(
         return AgentListResponse(items=agents)
 
     except ApiException as e:
-        if e.status == 403:
-            raise HTTPException(
-                status_code=403,
-                detail="Permission denied. Check RBAC configuration.",
-            )
-        raise HTTPException(status_code=e.status, detail=str(e.reason))
+        raise_http_from_api_exception(e)
+
+
+@router.get(
+    "/builds",
+    response_model=BuildListResponse,
+    dependencies=[Depends(require_roles(ROLE_VIEWER))],
+)
+async def list_agent_builds(
+    namespace: str = Query(default="default", description="Kubernetes namespace"),
+    kube: KubernetesService = Depends(get_kubernetes_service),
+) -> BuildListResponse:
+    """
+    List all agent Shipwright Builds in the specified namespace with their BuildRuns.
+
+    Returns Builds with label kagenti.io/type=agent, each with build metadata and
+    the list of BuildRuns (for visibility of in-progress and failed builds).
+    """
+    try:
+        return list_builds_with_runs(kube, namespace, RESOURCE_TYPE_AGENT)
+    except ApiException as e:
+        raise_http_from_api_exception(e)
 
 
 @router.get("/{namespace}/{name}", dependencies=[Depends(require_roles(ROLE_VIEWER))])

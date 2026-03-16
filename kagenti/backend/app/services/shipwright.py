@@ -17,6 +17,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from kubernetes.client import ApiException
+
 from app.core.constants import (
     APP_KUBERNETES_IO_CREATED_BY,
     APP_KUBERNETES_IO_NAME,
@@ -29,6 +31,8 @@ from app.core.constants import (
     RESOURCE_TYPE_TOOL,
     SHIPWRIGHT_CRD_GROUP,
     SHIPWRIGHT_CRD_VERSION,
+    SHIPWRIGHT_BUILDS_PLURAL,
+    SHIPWRIGHT_BUILDRUNS_PLURAL,
     SHIPWRIGHT_GIT_SECRET_NAME,
     SHIPWRIGHT_DEFAULT_DOCKERFILE,
     SHIPWRIGHT_DEFAULT_TIMEOUT,
@@ -44,7 +48,11 @@ from app.models.shipwright import (
     BuildSourceConfig,
     BuildOutputConfig,
     ResourceConfigFromBuild,
+    BuildRunSummary,
+    BuildSummary,
+    BuildListResponse,
 )
+from app.services.kubernetes import KubernetesService
 
 logger = logging.getLogger(__name__)
 
@@ -431,3 +439,81 @@ def get_output_image_from_buildrun(
         output_image = fallback_build.get("spec", {}).get("output", {}).get("image")
 
     return output_image, output_digest
+
+
+def list_builds_with_runs(
+    kube: KubernetesService,
+    namespace: str,
+    resource_type: str,
+) -> BuildListResponse:
+    """
+    List Shipwright Builds in a namespace with their BuildRuns (agents or tools).
+
+    Args:
+        kube: Kubernetes service instance
+        namespace: Kubernetes namespace
+        resource_type: RESOURCE_TYPE_AGENT or RESOURCE_TYPE_TOOL (for label selector)
+
+    Returns:
+        BuildListResponse with items; each item has agentName or toolName set per resource_type.
+    """
+    label_selector = f"{KAGENTI_TYPE_LABEL}={resource_type}"
+    builds = kube.list_custom_resources(
+        group=SHIPWRIGHT_CRD_GROUP,
+        version=SHIPWRIGHT_CRD_VERSION,
+        namespace=namespace,
+        plural=SHIPWRIGHT_BUILDS_PLURAL,
+        label_selector=label_selector,
+    )
+    items: List[BuildSummary] = []
+    for build in builds:
+        metadata = build.get("metadata", {})
+        spec = build.get("spec", {})
+        status = build.get("status", {})
+        build_name = metadata.get("name", "")
+        build_namespace = metadata.get("namespace", namespace)
+        source = spec.get("source", {})
+        git_info = source.get("git", {})
+
+        build_runs: List[BuildRunSummary] = []
+        try:
+            buildrun_list = kube.list_custom_resources(
+                group=SHIPWRIGHT_CRD_GROUP,
+                version=SHIPWRIGHT_CRD_VERSION,
+                namespace=namespace,
+                plural=SHIPWRIGHT_BUILDRUNS_PLURAL,
+                label_selector=f"kagenti.io/build-name={build_name}",
+            )
+            buildrun_list.sort(
+                key=lambda x: x.get("metadata", {}).get("creationTimestamp", ""),
+                reverse=True,
+            )
+            for br in buildrun_list:
+                info = extract_buildrun_info(br)
+                build_runs.append(
+                    BuildRunSummary(
+                        name=info.get("name") or "",
+                        phase=info["phase"],
+                        startTime=info.get("startTime"),
+                        completionTime=info.get("completionTime"),
+                        failureMessage=info.get("failureMessage"),
+                    )
+                )
+        except ApiException:
+            pass  # No buildruns or not accessible
+
+        summary_kw: Dict[str, Any] = {
+            "buildName": build_name,
+            "namespace": build_namespace,
+            "buildRegistered": status.get("registered", False),
+            "gitUrl": git_info.get("url", ""),
+            "gitRevision": git_info.get("revision", ""),
+            "buildRuns": build_runs,
+        }
+        if resource_type == RESOURCE_TYPE_AGENT:
+            summary_kw["agentName"] = build_name
+        else:
+            summary_kw["toolName"] = build_name
+        items.append(BuildSummary(**summary_kw))
+
+    return BuildListResponse(items=items)

@@ -12,3 +12,13 @@ export {
   formatDuration,
   getProgressInfo,
 } from './BuildProgressView';
+export { CatalogPageLayout } from './CatalogPageLayout';
+export { CatalogSection } from './CatalogSection';
+export { BuildCard, type BuildCardProps, type BuildRunRow } from './BuildCard';
+export { StatusBadge } from './StatusBadge';
+export { BuildPhaseBadge } from './BuildPhaseBadge';
+export { WorkloadTypeLabel } from './WorkloadTypeLabel';
+export {
+  DeleteConfirmModal,
+  type DeleteConfirmModalProps,
+} from './DeleteConfirmModal';

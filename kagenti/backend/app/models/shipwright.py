@@ -145,3 +145,32 @@ class ShipwrightBuildInfoResponse(BaseModel):
 
     # Resource configuration from annotations (generic dict for flexibility)
     resourceConfig: Optional[Dict[str, Any]] = None
+
+
+class BuildRunSummary(BaseModel):
+    """Summary of a single BuildRun for list/build-history APIs (agents and tools)."""
+
+    name: str
+    phase: str  # Pending, Running, Succeeded, Failed
+    startTime: Optional[str] = None
+    completionTime: Optional[str] = None
+    failureMessage: Optional[str] = None
+
+
+class BuildSummary(BaseModel):
+    """Summary of a Build with its BuildRuns for catalog list (agents and tools)."""
+
+    buildName: str
+    namespace: str
+    buildRegistered: bool
+    gitUrl: str
+    gitRevision: str
+    buildRuns: List[BuildRunSummary] = []
+    agentName: Optional[str] = None  # set for agent builds
+    toolName: Optional[str] = None  # set for tool builds
+
+
+class BuildListResponse(BaseModel):
+    """Response for listing builds in a namespace (agents or tools)."""
+
+    items: List[BuildSummary]

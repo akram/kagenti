@@ -29,8 +29,10 @@ test.describe('Agent Catalog Page @extended', () => {
     // This tests the loading state is properly shown
     await page.goto('/agents');
 
-    // Wait for either spinner to disappear or table to appear
-    await expect(page.getByRole('table').or(page.getByText(/No agents found/i))).toBeVisible({
+    // Wait for either spinner to disappear or content to appear (built agents or empty state)
+    await expect(
+      page.getByRole('table').or(page.getByText(/No built agents|No agent builds/i))
+    ).toBeVisible({
       timeout: 30000,
     });
   });
@@ -68,9 +70,9 @@ test.describe('Agent Catalog - With Deployed Agents @extended', () => {
   });
 
   test('should display agents table when agents are deployed', async ({ page }) => {
-    // Wait for either the table or the empty state message
+    // Wait for either the table or the empty state message (built agents section)
     const table = page.getByRole('table');
-    const emptyState = page.getByText(/No agents found/i);
+    const emptyState = page.getByText(/No built agents/i);
 
     // Either should be visible
     await expect(table.or(emptyState)).toBeVisible({ timeout: 30000 });
@@ -200,20 +202,44 @@ test.describe('Agent Catalog - API Integration @extended', () => {
   });
 
   test('should handle empty agent list', async ({ page }) => {
-    // Mock an empty response
+    // Mock empty responses for both agents and builds lists
     await page.route('**/api/v1/agents**', (route) => {
-      route.fulfill({
-        status: 200,
-        body: JSON.stringify({ items: [] }),
-        contentType: 'application/json',
-      });
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/builds')) {
+        route.fulfill({
+          status: 200,
+          body: JSON.stringify({ items: [] }),
+          contentType: 'application/json',
+        });
+      } else {
+        route.fulfill({
+          status: 200,
+          body: JSON.stringify({ items: [] }),
+          contentType: 'application/json',
+        });
+      }
     });
 
     await page.goto('/agents');
 
-    // Verify empty state is shown
-    await expect(page.getByText(/No agents found/i)).toBeVisible({
+    // Verify empty state for built agents is shown
+    await expect(page.getByText(/No built agents/i)).toBeVisible({
       timeout: 10000,
     });
+  });
+
+  test('should display Agent builds section', async ({ page }) => {
+    await page.goto('/agents');
+    await page.waitForLoadState('networkidle');
+
+    // Verify "Agent builds" section heading is present
+    await expect(page.getByRole('heading', { name: /Agent builds/i })).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Section shows either empty state or build cards
+    const noBuilds = page.getByText(/No Shipwright builds in namespace/);
+    const viewBuildButton = page.getByRole('button', { name: /View build/i });
+    await expect(noBuilds.or(viewBuildButton)).toBeVisible({ timeout: 10000 });
   });
 });

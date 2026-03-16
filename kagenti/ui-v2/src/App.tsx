@@ -1,15 +1,17 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { AppLayout } from './components/AppLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './pages/HomePage';
 import { AgentCatalogPage } from './pages/AgentCatalogPage';
+import { AgentBuildsPage } from './pages/AgentBuildsPage';
 import { AgentDetailPage } from './pages/AgentDetailPage';
 import { BuildProgressPage } from './pages/BuildProgressPage';
 import { ToolCatalogPage } from './pages/ToolCatalogPage';
+import { ToolBuildsPage } from './pages/ToolBuildsPage';
 import { ToolDetailPage } from './pages/ToolDetailPage';
 import { ToolBuildProgressPage } from './pages/ToolBuildProgressPage';
 import { MCPGatewayPage } from './pages/MCPGatewayPage';
@@ -29,11 +31,20 @@ function App() {
         <Route path="/" element={<HomePage />} />
         
         {/* Protected routes - require authentication */}
+        <Route path="/agents" element={<Navigate to="/agents/catalog" replace />} />
         <Route
-          path="/agents"
+          path="/agents/catalog"
           element={
             <ProtectedRoute>
               <AgentCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/agents/builds"
+          element={
+            <ProtectedRoute>
+              <AgentBuildsPage />
             </ProtectedRoute>
           }
         />
@@ -61,11 +72,20 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/tools" element={<Navigate to="/tools/catalog" replace />} />
         <Route
-          path="/tools"
+          path="/tools/catalog"
           element={
             <ProtectedRoute>
               <ToolCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tools/builds"
+          element={
+            <ProtectedRoute>
+              <ToolBuildsPage />
             </ProtectedRoute>
           }
         />
