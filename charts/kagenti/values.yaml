@@ -162,6 +162,16 @@ keycloak:
   autoBootstrapRealm: true
 
 # ------------------------------------------------------------------
+#  AuthBridge (authbridge-config in agent namespaces; consumed by kagenti-webhook)
+# ------------------------------------------------------------------
+authBridge:
+  clientAuthType: client-secret
+  spiffeIdpAlias: spire-spiffe
+  platformClientIds: kagenti
+  # auto | admin-api | dynamic-svid — auto matches Helm: dynamic-svid when spire.enabled and clientAuthType is federated-jwt
+  keycloakRegistrationMode: auto
+
+# ------------------------------------------------------------------
 #  Kagenti Webhook Configuration
 # ------------------------------------------------------------------
 # Pin sidecar image tags to the webhook chart version to prevent

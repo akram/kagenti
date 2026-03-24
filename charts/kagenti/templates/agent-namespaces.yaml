@@ -4,6 +4,12 @@
 {{- if .Values.agentNamespaces }}
 {{- $root := . }}
 {{- range $root.Values.agentNamespaces }}
+{{- $clientAuth := $root.Values.authBridge.clientAuthType | default "client-secret" }}
+{{- $rm := $root.Values.authBridge.keycloakRegistrationMode | default "auto" }}
+{{- $regMode := $rm }}
+{{- if eq $rm "auto" }}
+{{-   $regMode = ternary "dynamic-svid" "admin-api" (and $root.Values.spire.enabled (eq $clientAuth "federated-jwt")) }}
+{{- end }}
 ---
 # ——————————————————————————————————————————————————————————————————————————————
 #  Namespace: {{ . }}
@@ -102,10 +108,10 @@ type: kubernetes.io/dockerconfigjson
 data:
   .dockerconfigjson: {{ (printf "{\"auths\":{\"quay.io\":{\"username\":\"%s\",\"password\":\"%s\",\"auth\":\"%s\"}}}" $.Values.secrets.quayUser $.Values.secrets.quayToken (printf "%s:%s" $.Values.secrets.quayUser $.Values.secrets.quayToken | b64enc)) | b64enc }}
 ---
-{{- if not $root.Values.keycloak.adminExistingSecret }}
+{{- if and (not $root.Values.keycloak.adminExistingSecret) (ne $regMode "dynamic-svid") }}
 # ——————————————————————————————————————————————————————————————————————————————
 #  Secret for Keycloak Admin Credentials in Namespace: {{ . }}
-#  Used by the client-registration sidecar to register agents as OAuth clients.
+#  Used by the client-registration sidecar when KEYCLOAK_REGISTRATION_MODE=admin-api.
 # ——————————————————————————————————————————————————————————————————————————————
 apiVersion: v1
 kind: Secret
@@ -141,6 +147,11 @@ data:
   # that appears in token "iss" claims (split-horizon DNS).
   ISSUER: "{{ $root.Values.keycloak.publicUrl }}/realms/{{ $root.Values.keycloak.realm }}"
   SPIRE_ENABLED: {{ if $root.Values.spire.enabled }}"true"{{ else }}"false"{{ end }}
+  KEYCLOAK_REGISTRATION_MODE: {{ $regMode | quote }}
+  CLIENT_AUTH_TYPE: {{ $clientAuth | quote }}
+  SPIFFE_IDP_ALIAS: {{ $root.Values.authBridge.spiffeIdpAlias | default "spire-spiffe" | quote }}
+  JWT_AUDIENCE: "{{ $root.Values.keycloak.publicUrl }}/realms/{{ $root.Values.keycloak.realm }}"
+  PLATFORM_CLIENT_IDS: {{ $root.Values.authBridge.platformClientIds | default "kagenti" | quote }}
 ---
 # ——————————————————————————————————————————————————————————————————————————————
 #  ConfigMap for Envoy in Namespace: {{ . }}
