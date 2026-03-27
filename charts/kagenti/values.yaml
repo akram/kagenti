@@ -149,7 +149,7 @@ keycloak:
   adminUsernameKey: username
   adminPasswordKey: password
   # Keycloak admin credentials for agent namespaces (keycloak-admin-secret).
-  # Used by the client-registration sidecar to register agents as OAuth clients.
+  # Used by the legacy client-registration sidecar (opt-in) or by the operator for admin API access.
   # For production, override via .secret_values.yaml or use an existing secret.
   adminUsername: admin
   adminPassword: admin
@@ -167,7 +167,11 @@ keycloak:
 # Pin sidecar image tags to the webhook chart version to prevent
 # breakage when :latest is updated by newer kagenti-extensions builds.
 # These MUST be updated together with the chart version in Chart.yaml.
+# Override `image.tag` (e.g. dev) when testing local builds pushed to ghcr.io.
 kagenti-webhook-chart:
+  image:
+    repository: ghcr.io/kagenti/kagenti-extensions/kagenti-webhook
+    tag: dev
   defaults:
     images:
       envoyProxy: ghcr.io/kagenti/kagenti-extensions/envoy-with-processor:v0.4.0-alpha.10
@@ -182,7 +186,10 @@ kagenti-operator-chart:
   controllerManager:
     container:
       image:
-        tag: 0.2.0-alpha.22
+        repository: ghcr.io/kagenti/kagenti-operator/kagenti-operator
+        tag: dev
+      # ghcr.io images use /manager; ko local builds use /ko-app/cmd
+      cmd: /manager
       args:
       - "--leader-elect"
       - "--metrics-bind-address=:8443"
