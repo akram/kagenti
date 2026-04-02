@@ -215,7 +215,44 @@ kubectl patch network.operator.openshift.io cluster --type=merge \
   -p '{"spec":{"defaultNetwork":{"ovnKubernetesConfig":{"gatewayConfig":{"routingViaHost":true}}}}}'
 ```
 
-#### 3. Set Trust Domain
+#### 3. Verify Istio Ambient Mesh Prerequisites
+
+Kagenti uses **waypoint-based authentication** by default, which requires Istio ambient mesh. The `kagenti-deps` chart installs Istio in ambient mode, but you should verify the prerequisites are met.
+
+**Istio ambient mesh provides:**
+- Zero sidecar overhead (1 waypoint per namespace vs 3 sidecars per pod)
+- Centralized L7 policy enforcement
+- ~88% reduction in authentication infrastructure resources
+
+**Check Istio installation:**
+
+```bash
+# Verify istiod is running with ambient mode enabled
+kubectl get deployment istiod -n istio-system \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PILOT_ENABLE_AMBIENT")].value}'
+# Expected: true
+
+# Verify ztunnel DaemonSet is running
+kubectl get daemonset -n istio-system -l app=ztunnel
+# Should show a DaemonSet with pods on each node
+
+# Verify waypoint GatewayClass exists
+kubectl get gatewayclass istio-waypoint
+# Should exist
+
+# Check Istio CNI
+kubectl get daemonset -n istio-system istio-cni-node
+# Should be running
+```
+
+If any checks fail, the `kagenti-deps` chart will install the required components. The installation script (`scripts/ocp/setup-kagenti.sh`) also validates these prerequisites automatically.
+
+**For more information:**
+- [Waypoint Authentication Architecture](./architecture/waypoint-authentication.md)
+- [Waypoint Migration Guide](./waypoint-migration-guide.md)
+- [Red Hat ServiceMesh 3 Documentation](https://docs.openshift.com/container-platform/latest/service_mesh/v2x/ossm-about.html)
+
+#### 4. Set Trust Domain
 
 ```bash
 export DOMAIN=apps.$(kubectl get dns cluster -o jsonpath='{ .spec.baseDomain }')
