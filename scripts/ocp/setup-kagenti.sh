@@ -392,6 +392,123 @@ log_success "kagenti-deps installed"
 echo ""
 
 # ============================================================================
+# Step 3a: Validate Istio Ambient Mesh Configuration
+# ============================================================================
+log_info "Step 3a: Validate Istio ambient mesh"
+
+_validate_istio_ambient() {
+  if $DRY_RUN; then
+    log_info "  [dry-run] Would validate Istio ambient mesh configuration"
+    return 0
+  fi
+
+  local errors=0
+
+  # Check 1: istiod deployment exists and is ready
+  if ! $KUBECTL get deployment istiod -n istio-system &>/dev/null; then
+    log_error "  istiod deployment not found in istio-system namespace"
+    errors=$((errors + 1))
+  else
+    # Check if ambient is enabled
+    local ambient_enabled
+    ambient_enabled=$($KUBECTL get deployment istiod -n istio-system \
+      -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PILOT_ENABLE_AMBIENT")].value}' 2>/dev/null || echo "")
+
+    if [[ "$ambient_enabled" != "true" ]]; then
+      log_error "  Istio ambient mode not enabled (PILOT_ENABLE_AMBIENT != true)"
+      log_info "    Current value: ${ambient_enabled:-<not set>}"
+      errors=$((errors + 1))
+    else
+      log_success "  Istio ambient mode enabled (PILOT_ENABLE_AMBIENT=true)"
+    fi
+  fi
+
+  # Check 2: ztunnel DaemonSet exists and has pods running
+  local ztunnel_ns
+  ztunnel_ns=$($KUBECTL get daemonset -A -l app=ztunnel -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "")
+
+  if [[ -z "$ztunnel_ns" ]]; then
+    log_error "  ztunnel DaemonSet not found in any namespace"
+    log_info "    ztunnel is required for Istio ambient mesh L4 proxy functionality"
+    errors=$((errors + 1))
+  else
+    local ztunnel_ready
+    ztunnel_ready=$($KUBECTL get daemonset -n "$ztunnel_ns" -l app=ztunnel \
+      -o jsonpath='{.items[0].status.numberReady}' 2>/dev/null || echo "0")
+    local ztunnel_desired
+    ztunnel_desired=$($KUBECTL get daemonset -n "$ztunnel_ns" -l app=ztunnel \
+      -o jsonpath='{.items[0].status.desiredNumberScheduled}' 2>/dev/null || echo "0")
+
+    if [[ "$ztunnel_ready" -eq 0 ]] || [[ "$ztunnel_ready" -lt "$ztunnel_desired" ]]; then
+      log_warn "  ztunnel pods not all ready: $ztunnel_ready/$ztunnel_desired"
+      log_info "    Waiting for ztunnel DaemonSet to be ready..."
+      $KUBECTL rollout status daemonset -n "$ztunnel_ns" -l app=ztunnel --timeout=120s 2>/dev/null || {
+        log_error "  ztunnel DaemonSet not ready after 2m"
+        errors=$((errors + 1))
+      }
+    else
+      log_success "  ztunnel DaemonSet ready: $ztunnel_ready/$ztunnel_desired pods in $ztunnel_ns"
+    fi
+  fi
+
+  # Check 3: istio-waypoint GatewayClass exists
+  if ! $KUBECTL get gatewayclass istio-waypoint &>/dev/null; then
+    log_error "  istio-waypoint GatewayClass not found"
+    log_info "    GatewayClass 'istio-waypoint' is required for ambient mesh waypoint gateways"
+    errors=$((errors + 1))
+  else
+    # Check if GatewayClass is Accepted
+    local gc_accepted
+    gc_accepted=$($KUBECTL get gatewayclass istio-waypoint \
+      -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null || echo "Unknown")
+
+    if [[ "$gc_accepted" != "True" ]]; then
+      log_warn "  istio-waypoint GatewayClass not Accepted (status: $gc_accepted)"
+    else
+      log_success "  istio-waypoint GatewayClass ready and Accepted"
+    fi
+  fi
+
+  # Check 4: Istio CNI (required for traffic redirection in ambient mode)
+  if ! $KUBECTL get daemonset -n istio-cni istio-cni-node &>/dev/null; then
+    log_warn "  Istio CNI DaemonSet not found (ambient mesh may not redirect traffic correctly)"
+  else
+    log_success "  Istio CNI DaemonSet found"
+  fi
+
+  if [[ $errors -gt 0 ]]; then
+    echo ""
+    log_error "Istio ambient mesh validation failed with $errors error(s)"
+    echo ""
+    log_info "Troubleshooting steps:"
+    log_info "  1. Check istiod logs:"
+    log_info "     $KUBECTL logs -n istio-system deployment/istiod --tail=50"
+    log_info "  2. Check ztunnel logs:"
+    log_info "     $KUBECTL logs -n ${ztunnel_ns:-istio-ztunnel} -l app=ztunnel --tail=50"
+    log_info "  3. Verify Istio installation:"
+    log_info "     $KUBECTL get pods -n istio-system"
+    log_info "     $KUBECTL get pods -n ${ztunnel_ns:-istio-ztunnel}"
+    log_info "  4. Check GatewayClass status:"
+    log_info "     $KUBECTL describe gatewayclass istio-waypoint"
+    echo ""
+    log_info "If issues persist, the kagenti-deps chart may need to be reinstalled:"
+    log_info "  helm uninstall kagenti-deps -n kagenti-system"
+    log_info "  $0  # Re-run this script"
+    echo ""
+    return 1
+  fi
+
+  log_success "Istio ambient mesh validation passed"
+  return 0
+}
+
+_validate_istio_ambient || {
+  log_error "Istio ambient mesh is not properly configured. Cannot proceed."
+  exit 1
+}
+echo ""
+
+# ============================================================================
 # Step 3b: Istio multi-mesh shared trust via cert-manager
 # ============================================================================
 # Ported from kagenti Ansible installer (05_install_rhoai.yaml).
